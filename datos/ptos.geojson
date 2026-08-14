@@ -1,0 +1,11 @@
+{
+"type": "FeatureCollection",
+"name": "ptos",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{"type":"Feature","properties":{"Id":0,"Municipio":"Chia - Cajicá - Cojardín"},"geometry":{"type":"Point","coordinates":[-74.02797763895687,4.861481612537405]}},
+{"type":"Feature","properties":{"Id":0,"Municipio":"La Calera"},"geometry":{"type":"Point","coordinates":[-74.010292928853048,4.681413808206505]}},
+{"type":"Feature","properties":{"Id":0,"Municipio":"Funza - Madrid - Mosquera"},"geometry":{"type":"Point","coordinates":[-74.200978915245713,4.698103971069197]}},
+{"type":"Feature","properties":{"Id":0,"Municipio":"Sopó-Sopó Clubes-Tocancipá-Acuapolis-Gachancipá-Otras Salidas Norte"},"geometry":{"type":"Point","coordinates":[-73.965287545516816,4.953999660865336]}}
+]
+}
