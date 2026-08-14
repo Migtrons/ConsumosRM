@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoreo de Caudal - Bogotá</title>
+    <title>Monitoreo de Caudal - ConsumosRM</title>
     
     <!-- Librería del Mapa (Leaflet) -->
     <link rel="stylesheet" href="https://unpkg.com" />
@@ -11,26 +11,10 @@
 
     <style>
         /* Estilos globales y reset */
-        * { 
-            box-sizing: border-box; 
-            margin: 0; 
-            padding: 0; 
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; width: 100%; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #e8f4fd; display: flex; flex-direction: column; }
         
-        /* Configuración obligatoria para que el navegador dimensione correctamente la altura */
-        html, body { 
-            height: 100%; 
-            width: 100%; 
-        }
-        
-        body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
-            background: #e8f4fd; 
-            display: flex; 
-            flex-direction: column; 
-        }
-
-        /* Estilos del menú superior */
         #menu { 
             background: #2c3e50; 
             padding: 15px; 
@@ -40,14 +24,10 @@
             color: white; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.3); 
             z-index: 1000; 
-            height: 60px; /* Definimos una altura fija para el menú */
+            height: 60px; 
         }
         
-        h3 { 
-            margin: 0; 
-            font-size: 16px; 
-            margin-right: 15px; 
-        }
+        h3 { margin: 0; font-size: 16px; margin-right: 15px; }
         
         .btn { 
             background: #34495e; 
@@ -60,117 +40,134 @@
             transition: 0.3s; 
             font-weight: bold; 
         }
+        .btn:hover { background: #1abc9c; }
+        .btn.active { background: #1abc9c; box-shadow: inset 0 0 5px rgba(0,0,0,0.5); }
         
-        .btn:hover { 
-            background: #1abc9c; 
-        }
-        
-        .btn.active { 
-            background: #1abc9c; 
-            box-shadow: inset 0 0 5px rgba(0,0,0,0.5); 
-        }
+        #map { width: 100%; height: calc(100vh - 60px); z-index: 1; }
 
-        /* Solución para que Leaflet reconozca las dimensiones del mapa */
-        #map { 
-            width: 100%; 
-            height: calc(100vh - 60px); /* Toma todo el alto de la pantalla menos los 60px del menú */
-            z-index: 1;
+        /* Estilos personalizados para las etiquetas fijas tipo Acueducto */
+        .etiqueta-sector {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #000000 !important;
+            font-family: 'Segoe UI', Arial, sans-serif !important;
+            font-weight: bold !important;
+            font-size: 13px !important;
+            text-align: center !important;
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; /* Borde blanco sutil al texto para legibilidad */
         }
     </style>
 </head>
 <body>
 
-    <!-- Menú Superior Interactivo -->
+    <!-- Menú de navegación por años -->
     <div id="menu">
         <h3>Seleccione el Año de Monitoreo:</h3>
-        <button class="btn active" onclick="cambiarAnio(2023, this)">2023</button>
-        <button class="btn" onclick="cambiarAnio(2025, this)">2025</button>
-        <button class="btn" onclick="cambiarAnio(2026, this)">2026 (Actual)</button>
+        <button class="btn active" onclick="cambiarAnio('2023', this)">2023</button>
+        <button class="btn" onclick="cambiarAnio('2025', this)">2025</button>
+        <button class="btn" onclick="cambiarAnio('2026', this)">2026 (Actual)</button>
     </div>
 
-    <!-- Div donde se renderiza el Mapa -->
+    <!-- Contenedor del mapa -->
     <div id="map"></div>
 
     <script>
         // 1. Inicializar el mapa centrado en Bogotá
-        const map = L.map('map').setView([4.62, -74.12], 11);
+        const map = L.map('map').setView([4.62, -74.12], 12);
 
-        // Capa de mapa base gratuita (CartoDB Positron, limpia y clara)
+        // Capa base urbana clara
         L.tileLayer('https://{s}://{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap &copy; CARTO'
         }).addTo(map);
 
-        // 2. Base de Datos del Caudal por Año
-        const datosCaudal = {
-            2023: { "S-1": 0.95, "S-2": 1.40, "S-3": 0.55, "S-4": 1.30, "S-30": 1.20 },
-            2025: { "S-1": 0.82, "S-2": 1.15, "S-3": 0.60, "S-4": 1.05, "S-30": 0.95 },
-            2026: { "S-1": 0.70, "S-2": 0.90, "S-3": 0.45, "S-4": 0.85, "S-30": 0.75 }
+        // Mapeo de archivos geojson por año
+        const rutasMapas = {
+            '2023': 'datos/QSUM2023.geojson',     
+            '2025': 'datos/Abastecimiento.geojson', 
+            '2026': 'datos/Abastecimiento.geojson'  
         };
 
-        let anioActual = 2023;
-        let capaGeoJSON;
+        let anioActual = '2023';
+        let capaSectores;
+        let capaPuntos;
 
-        // 3. Función para definir el color según el volumen del caudal (m3/s)
-        function obtenerColor(caudal) {
-            if (!caudal) return '#bdc3c7'; // Gris si no hay datos
-            return caudal > 1.2 ? '#d35400' : // Naranja oscuro para caudal alto
-                   caudal > 0.8 ? '#f39c12' : // Amarillo/Naranja intermedio
-                                  '#2ecc71';   // Verde para caudal bajo/controlado
+        // 2. Función para cargar capas con el estilo solicitado
+        function cargarCapas() {
+            if (capaSectores) { map.removeLayer(capaSectores); }
+            if (capaPuntos) { map.removeLayer(capaPuntos); }
+
+            // Cargar polígonos de sectores
+            fetch(rutasMapas[anioActual])
+                .then(response => response.json())
+                .then(data => {
+                    capaSectores = L.geoJSON(data, {
+                        style: function(feature) {
+                            return {
+                                fillOpacity: 0,      // Sin relleno (100% transparente)
+                                weight: 2.5,         // Borde negro grueso
+                                color: '#000000',    // Líneas divisorias negras
+                                dashArray: ''        // Línea continua
+                            };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            // Extracción de datos desde los atributos de tu QGIS
+                            const numSector = feature.properties['NUM SECTOR'] || feature.properties['NUM_SECTOR'] || feature.properties.id || "00";
+                            
+                            // Busca el caudal dinámico del campo específico de 2023 o campos genéricos
+                            const valorCaudal = feature.properties['MAX_F2023Q'] || feature.properties.caudal || feature.properties.Q_SUM || "0.00";
+                            
+                            // Asegurar formato "S-XX" (Agrega el S- si el campo no lo trae originalmente)
+                            const etiquetaFormateada = numSector.toString().startsWith('S-') ? numSector : `S-${numSector}`;
+
+                            // Crear etiqueta de texto fija y centrada en medio del sector
+                            layer.bindTooltip(`
+                                <div>${etiquetaFormateada}</div>
+                                <div>${valorCaudal} m3/s</div>
+                            `, {
+                                permanent: true,        // Hace que la etiqueta se quede fija en pantalla
+                                direction: 'center',    // Centra el texto en el medio del polígono
+                                className: 'etiqueta-sector' // Aplica estilos CSS transparentes
+                            });
+                        }
+                    }).addTo(map);
+
+                    // Auto-encuadre geográfico a la zona de estudio
+                    map.fitBounds(capaSectores.getBounds());
+                })
+                .catch(err => console.error("Error cargando polígonos:", err));
+
+            // Cargar puntos de control (ptos.geojson)
+            fetch('datos/ptos.geojson')
+                .then(response => response.json())
+                .then(data => {
+                    capaPuntos = L.geoJSON(data, {
+                        pointToLayer: function(feature, latlng) {
+                            return L.circleMarker(latlng, {
+                                radius: 4,
+                                fillColor: "#e74c3c",
+                                color: "#ffffff",
+                                weight: 1,
+                                opacity: 1,
+                                fillOpacity: 0.9
+                            });
+                        }
+                    }).addTo(map);
+                })
+                .catch(err => console.error("Error cargando puntos:", err));
         }
 
-        // 4. Polígonos de Ejemplo (Sectores Hidráulicos del Sur de Bogotá)
-        const sectoresGeoJSON = {
-            "type": "FeatureCollection",
-            "features": [
-                { "type": "Feature", "properties": { "id": "S-1", "nombre": "Sector Usme" }, "geometry": { "type": "Polygon", "coordinates": [[[-74.12, 4.52], [-74.08, 4.52], [-74.09, 4.57], [-74.13, 4.56], [-74.12, 4.52]]] }},
-                { "type": "Feature", "properties": { "id": "S-2", "nombre": "Sector Tunjuelito" }, "geometry": { "type": "Polygon", "coordinates": [[[-74.15, 4.57], [-74.09, 4.57], [-74.11, 4.61], [-74.16, 4.60], [-74.15, 4.57]]] }},
-                { "type": "Feature", "properties": { "id": "S-3", "nombre": "Sector Kennedy Este" }, "geometry": { "type": "Polygon", "coordinates": [[[-74.17, 4.60], [-74.12, 4.61], [-74.14, 4.65], [-74.18, 4.64], [-74.17, 4.60]]] }},
-                { "type": "Feature", "properties": { "id": "S-4", "nombre": "Sector Tintal" }, "geometry": { "type": "Polygon", "coordinates": [[[-74.21, 4.63], [-74.15, 4.64], [-74.16, 4.69], [-74.22, 4.68], [-74.21, 4.63]]] }},
-                { "type": "Feature", "properties": { "id": "S-30", "nombre": "Sector Ciudad Bolívar" }, "geometry": { "type": "Polygon", "coordinates": [[[-74.16, 4.47], [-74.11, 4.48], [-74.12, 4.52], [-74.17, 4.51], [-74.16, 4.47]]] }}
-            ]
-        };
-
-        // 5. Función para pintar los sectores en el mapa
-        function dibujarMapa() {
-            if (capaGeoJSON) { map.removeLayer(capaGeoJSON); }
-
-            capaGeoJSON = L.geoJSON(sectoresGeoJSON, {
-                style: function(feature) {
-                    const idSector = feature.properties.id;
-                    const caudal = datosCaudal[anioActual][idSector];
-                    return {
-                        fillColor: obtenerColor(caudal),
-                        weight: 2,
-                        opacity: 1,
-                        color: 'white',
-                        fillOpacity: 0.7
-                    };
-                },
-                onEachFeature: function(feature, layer) {
-                    const idSector = feature.properties.id;
-                    const caudal = datosCaudal[anioActual][idSector] || "Sin registro";
-                    
-                    layer.bindPopup(`
-                        <strong>${feature.properties.nombre} (${idSector})</strong><br/>
-                        Caudal suministrado: <b>${caudal} m³/s</b><br/>
-                        Año evaluado: ${anioActual}
-                    `);
-                }
-            }).addTo(map);
-        }
-
-        // 6. Controlador de los Botones del Menú
+        // 3. Controlador de interacción de los botones
         function cambiarAnio(anio, boton) {
             anioActual = anio;
-            
             document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
             boton.classList.add('active');
-            
-            dibujarMapa();
+            cargarCapas(); 
         }
 
-        // Carga inicial al abrir la página
-        dibujarMapa();
+        // Carga inicial al ingresar
+        cargarCapas();
     </script>
 </body>
 </html>
+
